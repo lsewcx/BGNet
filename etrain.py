@@ -101,9 +101,9 @@ if __name__ == '__main__':
     parser.add_argument('--trainsize', type=int,
                         default=416, help='training dataset size')
     parser.add_argument('--clip', type=float,
-                        default=0.5, help='gradient clipping margin')
+                        default=1, help='gradient clipping margin')
     parser.add_argument('--train_path', type=str,
-                        default='./data/TrainDataset', help='path to train dataset')
+                        default='/kaggle/input/cod10k-train/TrainDataset', help='path to train dataset')
     parser.add_argument('--train_save', type=str,
                         default='BGNet')
     opt = parser.parse_args()

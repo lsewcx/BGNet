@@ -42,29 +42,7 @@ def dice_loss(predict, target):
     return loss.mean()
 
 
-def validate(val_loader, model):
-    model.eval()
-    loss_record = AvgMeter()
-    with torch.no_grad():
-        for i, pack in enumerate(val_loader, start=1):
-            images, gts, edges = pack
-            images = Variable(images).cuda()
-            gts = Variable(gts).cuda()
-            edges = Variable(edges).cuda()
-
-            lateral_map_3, lateral_map_2, lateral_map_1, edge_map = model(images)
-
-            loss3 = structure_loss(lateral_map_3, gts)
-            loss2 = structure_loss(lateral_map_2, gts)
-            loss1 = structure_loss(lateral_map_1, gts)
-            losse = dice_loss(edge_map, edges)
-            loss = loss3 + loss2 + loss1 + 3 * losse
-
-            loss_record.update(loss.data, opt.batchsize)
-    return loss_record.avg
-
-
-def train(train_loader, val_loader, model, optimizer, epoch, best_loss):
+def train(train_loader, model, optimizer, epoch):
     model.train()
 
     loss_record3, loss_record2, loss_record1, loss_recorde = AvgMeter(), AvgMeter(), AvgMeter(), AvgMeter()
@@ -82,7 +60,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss):
         loss2 = structure_loss(lateral_map_2, gts)
         loss1 = structure_loss(lateral_map_1, gts)
         losse = dice_loss(edge_map, edges)
-        loss = loss3 + loss2 + loss1 + 3 * losse
+        loss = loss3 + loss2 + loss1 + 3*losse
         # ---- backward ----
         loss.backward()
         clip_gradient(optimizer, opt.clip)
@@ -109,16 +87,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss):
         torch.save(model.state_dict(), save_path + 'BGNet-%d.pth' % epoch)
         print('[Saving Snapshot:]', save_path + 'BGNet-%d.pth' % epoch)
         file.write('[Saving Snapshot:]' + save_path + 'BGNet-%d.pth' % epoch + '\n')
-
-    # 验证模型并保存最优模型
-    val_loss = validate(val_loader, model)
-    if val_loss < best_loss:
-        best_loss = val_loss
-        torch.save(model.state_dict(), save_path + 'BGNet-best.pth')
-        print('[Saving Best Model:]', save_path + 'BGNet-best.pth')
-        file.write('[Saving Best Model:]' + save_path + 'BGNet-best.pth' + '\n')
-
-    return best_loss
+        
 
 
 if __name__ == '__main__':
@@ -135,8 +104,6 @@ if __name__ == '__main__':
                         default=1, help='gradient clipping margin')
     parser.add_argument('--train_path', type=str,
                         default='/kaggle/input/cod10k-train/TrainDataset', help='path to train dataset')
-    parser.add_argument('--val_path', type=str,
-                        default='/kaggle/input/cod10k-val/TestDataset', help='path to validation dataset')
     parser.add_argument('--train_save', type=str,
                         default='BGNet')
     opt = parser.parse_args()
@@ -152,14 +119,12 @@ if __name__ == '__main__':
     edge_root = '{}/Edge/'.format(opt.train_path)
 
     train_loader = get_loader(image_root, gt_root, edge_root, batchsize=opt.batchsize, trainsize=opt.trainsize)
-    val_loader = get_loader(image_root, gt_root, edge_root, batchsize=opt.batchsize, trainsize=opt.trainsize)
     total_step = len(train_loader)
 
     print("Start Training")
 
-    best_loss = float('inf')
     for epoch in range(opt.epoch):
         poly_lr(optimizer, opt.lr, epoch, opt.epoch)
-        best_loss = train(train_loader, val_loader, model, optimizer, epoch, best_loss)
+        train(train_loader, model, optimizer, epoch)
 
     file.close()

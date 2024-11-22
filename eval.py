@@ -13,7 +13,8 @@ from tqdm import tqdm
 from py_sod_metrics import MAE, Emeasure, Fmeasure, Smeasure, WeightedFmeasure
 
 method='BGNet'
-for _data_name in ['CAMO','CHAMELEON','COD10K','NC4K']:
+# for _data_name in ['CAMO','CHAMELEON','COD10K','NC4K']:
+for _data_name in ['COD10K']:
     mask_root = '/kaggle/input/cod10k-test/TestDataset/{}/GT'.format(_data_name)
     pred_root = './results/{}/{}/'.format(method, _data_name)
     mask_name_list = sorted(os.listdir(mask_root))

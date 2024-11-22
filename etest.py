@@ -12,7 +12,7 @@ parser.add_argument('--testsize', type=int, default=416, help='testing size')
 parser.add_argument('--pth_path', type=str, default='./checkpoints/best/BGNet.pth')
 
 for _data_name in ['CAMO','CHAMELEON','COD10K','NC4K']:
-    data_path = './data/TestDataset/{}/'.format(_data_name)
+    data_path = '/kaggle/input/cod10k-test/TestDataset/{}/'.format(_data_name)
     save_path = './results/BGNet/{}/'.format(_data_name)
     opt = parser.parse_args()
     model = Net()

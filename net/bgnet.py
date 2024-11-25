@@ -142,31 +142,6 @@ class CAM(nn.Module):
 
         return x
 
-class DUpsampling(nn.Module):
-    def __init__(self, inplanes, scale, num_class=21, pad=0):
-        super(DUpsampling, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, num_class * scale * scale, kernel_size=1, padding = pad,bias=False)
-        self.scale = scale
-    
-    def forward(self, x):
-        x = self.conv1(x)
-        N, C, H, W = x.size()
-
-        # N, H, W, C
-        x_permuted = x.permute(0, 2, 3, 1) 
-
-        # N, H, W*scale, C/scale
-        x_permuted = x_permuted.contiguous().view((N, H, W * self.scale, int(C / (self.scale))))
-
-        # N, W*scale,H, C/scale
-        x_permuted = x_permuted.permute(0, 2, 1, 3)
-        # N, W*scale,H*scale, C/(scale**2)
-        x_permuted = x_permuted.contiguous().view((N, W * self.scale, H * self.scale, int(C / (self.scale * self.scale))))
-
-        # N,C/(scale**2),W*scale,H*scale
-        x = x_permuted.permute(0, 3, 2, 1)
-        
-        return x
 
 class Net(nn.Module):
     def __init__(self):
@@ -191,11 +166,8 @@ class Net(nn.Module):
         self.cam2 = CAM(256, 128)
         self.cam3 = CAM(256, 256)
 
-        # 使用 DUpsampling 模块进行上采样
-        self.dupsample1 = DUpsampling(1, 4, num_class=1)
-        self.dupsample2 = DUpsampling(1, 8, num_class=1)
-        self.dupsample3 = DUpsampling(1, 16, num_class=1)
-        self.dupsample_edge = DUpsampling(1, 4, num_class=1)
+        # 只使用一个 CoordAttention 模块
+        self.coord_att = CoordAttention(256, 256)
 
         self.predictor1 = nn.Conv2d(64, 1, 1)
         self.predictor2 = nn.Conv2d(128, 1, 1)
@@ -217,16 +189,19 @@ class Net(nn.Module):
         x3r = self.reduce3(x3a)
         x4r = self.reduce4(x4a)
 
+        # 只在最后一层使用 CoordAttention
+        x4r = self.coord_att(x4r)
+
         x34 = self.cam3(x3r, x4r)
         x234 = self.cam2(x2r, x34)
         x1234 = self.cam1(x1r, x234)
 
         o3 = self.predictor3(x34)
-        o3 = self.dupsample3(o3)
+        o3 = F.interpolate(o3, scale_factor=16, mode='bilinear', align_corners=False)
         o2 = self.predictor2(x234)
-        o2 = self.dupsample2(o2)
+        o2 = F.interpolate(o2, scale_factor=8, mode='bilinear', align_corners=False)
         o1 = self.predictor1(x1234)
-        o1 = self.dupsample1(o1)
-        oe = self.dupsample_edge(edge_att)
+        o1 = F.interpolate(o1, scale_factor=4, mode='bilinear', align_corners=False)
+        oe = F.interpolate(edge_att, scale_factor=4, mode='bilinear', align_corners=False)
 
         return o3, o2, o1, oe

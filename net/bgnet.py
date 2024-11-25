@@ -142,6 +142,27 @@ class CAM(nn.Module):
 
         return x
 
+class DUpsampling(nn.Module):
+    def __init__(self, in_channels, out_channels, scale_factor=2):
+        super(DUpsampling, self).__init__()
+        self.scale_factor = scale_factor
+        self.conv_offset = nn.Conv2d(in_channels, 2 * scale_factor * scale_factor, kernel_size=3, padding=1)
+        self.conv_mask = nn.Conv2d(in_channels, scale_factor * scale_factor, kernel_size=3, padding=1)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+
+    def forward(self, x):
+        offset = self.conv_offset(x)
+        mask = torch.sigmoid(self.conv_mask(x))
+        N, C, H, W = x.size()
+        x = F.unfold(x, kernel_size=3, padding=1)
+        x = x.view(N, C, 3, 3, H, W)
+        offset = offset.view(N, 2, self.scale_factor, self.scale_factor, H, W)
+        mask = mask.view(N, 1, self.scale_factor, self.scale_factor, H, W)
+        x = x * mask
+        x = x.view(N, C * 3 * 3, H, W)
+        x = F.fold(x, output_size=(H * self.scale_factor, W * self.scale_factor), kernel_size=3, padding=1)
+        x = self.conv(x)
+        return x
 
 class Net(nn.Module):
     def __init__(self):
@@ -166,8 +187,11 @@ class Net(nn.Module):
         self.cam2 = CAM(256, 128)
         self.cam3 = CAM(256, 256)
 
-        # 只使用一个 CoordAttention 模块
-        self.coord_att = CoordAttention(256, 256)
+        # 使用 DUpsampling 模块进行上采样
+        self.dupsample1 = DUpsampling(64, 64, scale_factor=4)
+        self.dupsample2 = DUpsampling(128, 128, scale_factor=8)
+        self.dupsample3 = DUpsampling(256, 256, scale_factor=16)
+        self.dupsample_edge = DUpsampling(1, 1, scale_factor=4)
 
         self.predictor1 = nn.Conv2d(64, 1, 1)
         self.predictor2 = nn.Conv2d(128, 1, 1)
@@ -189,19 +213,16 @@ class Net(nn.Module):
         x3r = self.reduce3(x3a)
         x4r = self.reduce4(x4a)
 
-        # 只在最后一层使用 CoordAttention
-        x4r = self.coord_att(x4r)
-
         x34 = self.cam3(x3r, x4r)
         x234 = self.cam2(x2r, x34)
         x1234 = self.cam1(x1r, x234)
 
         o3 = self.predictor3(x34)
-        o3 = F.interpolate(o3, scale_factor=16, mode='bilinear', align_corners=False)
+        o3 = self.dupsample3(o3)
         o2 = self.predictor2(x234)
-        o2 = F.interpolate(o2, scale_factor=8, mode='bilinear', align_corners=False)
+        o2 = self.dupsample2(o2)
         o1 = self.predictor1(x1234)
-        o1 = F.interpolate(o1, scale_factor=4, mode='bilinear', align_corners=False)
-        oe = F.interpolate(edge_att, scale_factor=4, mode='bilinear', align_corners=False)
+        o1 = self.dupsample1(o1)
+        oe = self.dupsample_edge(edge_att)
 
         return o3, o2, o1, oe

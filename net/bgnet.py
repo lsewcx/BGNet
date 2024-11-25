@@ -177,7 +177,7 @@ class Net(nn.Module):
         # 使用 DySample 模块进行上采样
         self.dysample1 = DySample(64, 64, kernel_size=3, up_factor=4)
         self.dysample2 = DySample(128, 128, kernel_size=3, up_factor=8)
-        self.dysample3 = DySample(256, 256, kernel_size=3, up_factor=16)
+        self.dysample3 = DySample(1, 1, kernel_size=3, up_factor=16)
         self.dysample_edge = DySample(1, 1, kernel_size=3, up_factor=4)
 
     def forward(self, x):
@@ -200,7 +200,7 @@ class Net(nn.Module):
         x234 = self.cam2(x2r, x34)
         x1234 = self.cam1(x1r, x234)
 
-        o3 = self.predictor3(x34)
+        o3 = self.predictor3(x34) # 16,1,26,26
         o3 = self.dysample3(o3)
         o2 = self.predictor2(x234)
         o2 = self.dysample2(o2)

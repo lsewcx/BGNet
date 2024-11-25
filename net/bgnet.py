@@ -158,6 +158,10 @@ class DUpsampling(nn.Module):
         x = x.view(N, C, 3, 3, H, W)
         offset = offset.view(N, 2, self.scale_factor, self.scale_factor, H, W)
         mask = mask.view(N, 1, self.scale_factor, self.scale_factor, H, W)
+        x = x.permute(0, 4, 5, 1, 2, 3).contiguous()  # 调整维度顺序
+        x = x.view(N * H * W, C, 3, 3)
+        mask = mask.permute(0, 4, 5, 1, 2, 3).contiguous()  # 调整维度顺序
+        mask = mask.view(N * H * W, 1, self.scale_factor, self.scale_factor)
         x = x * mask
         x = x.view(N, C * 3 * 3, H, W)
         x = F.fold(x, output_size=(H * self.scale_factor, W * self.scale_factor), kernel_size=3, padding=1)

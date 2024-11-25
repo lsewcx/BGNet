@@ -166,10 +166,8 @@ class Net(nn.Module):
         self.cam2 = CAM(256, 128)
         self.cam3 = CAM(256, 256)
 
-        self.coord_att1 = CoordAttention(64, 64)
-        self.coord_att2 = CoordAttention(128, 128)
-        self.coord_att3 = CoordAttention(256, 256)
-        self.coord_att4 = CoordAttention(256, 256)
+        # 只使用一个 CoordAttention 模块
+        self.coord_att = CoordAttention(256, 256)
 
         self.predictor1 = nn.Conv2d(64, 1, 1)
         self.predictor2 = nn.Conv2d(128, 1, 1)
@@ -191,10 +189,8 @@ class Net(nn.Module):
         x3r = self.reduce3(x3a)
         x4r = self.reduce4(x4a)
 
-        x1r = self.coord_att1(x1r)
-        x2r = self.coord_att2(x2r)
-        x3r = self.coord_att3(x3r)
-        x4r = self.coord_att4(x4r)
+        # 只在最后一层使用 CoordAttention
+        x4r = self.coord_att(x4r)
 
         x34 = self.cam3(x3r, x4r)
         x234 = self.cam2(x2r, x34)

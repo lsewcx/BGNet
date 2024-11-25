@@ -5,9 +5,10 @@ from net.ResNet import resnet50
 from math import log
 from net.Res2Net import res2net50_v1b_26w_4s
 
-class CARAFE(nn.Module):
+
+class DySample(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, up_factor=2):
-        super(CARAFE, self).__init__()
+        super(DySample, self).__init__()
         self.kernel_size = kernel_size
         self.up_factor = up_factor
         self.down = nn.Conv2d(in_channels, in_channels // 4, 1)
@@ -45,7 +46,6 @@ class CARAFE(nn.Module):
         out_tensor = F.pixel_shuffle(out_tensor, self.up_factor)
         out_tensor = self.out(out_tensor)
         return out_tensor
-
 
 class ConvBNR(nn.Module):
     def __init__(self, inplanes, planes, kernel_size=3, stride=1, dilation=1, bias=False):
@@ -174,11 +174,11 @@ class Net(nn.Module):
         self.predictor2 = nn.Conv2d(128, 1, 1)
         self.predictor3 = nn.Conv2d(256, 1, 1)
 
-        # 使用 CARAFE 模块进行上采样
-        self.carafe1 = CARAFE(64, 64, kernel_size=3, up_factor=4)
-        self.carafe2 = CARAFE(128, 128, kernel_size=3, up_factor=8)
-        self.carafe3 = CARAFE(1, 256, kernel_size=3, up_factor=16)
-        self.carafe_edge = CARAFE(1, 1, kernel_size=3, up_factor=4)
+        # 使用 DySample 模块进行上采样
+        self.dysample1 = DySample(64, 64, kernel_size=3, up_factor=4)
+        self.dysample2 = DySample(128, 128, kernel_size=3, up_factor=8)
+        self.dysample3 = DySample(256, 256, kernel_size=3, up_factor=16)
+        self.dysample_edge = DySample(1, 1, kernel_size=3, up_factor=4)
 
     def forward(self, x):
         x1, x2, x3, x4 = self.resnet(x)
@@ -201,11 +201,11 @@ class Net(nn.Module):
         x1234 = self.cam1(x1r, x234)
 
         o3 = self.predictor3(x34)
-        o3 = self.carafe3(o3)
+        o3 = self.dysample3(o3)
         o2 = self.predictor2(x234)
-        o2 = self.carafe2(o2)
+        o2 = self.dysample2(o2)
         o1 = self.predictor1(x1234)
-        o1 = self.carafe1(o1)
-        oe = self.carafe_edge(edge_att)
+        o1 = self.dysample1(o1)
+        oe = self.dysample_edge(edge_att)
 
         return o3, o2, o1, oe

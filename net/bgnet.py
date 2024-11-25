@@ -175,10 +175,10 @@ class Net(nn.Module):
         self.predictor3 = nn.Conv2d(256, 1, 1)
 
         # 使用 DySample 模块进行上采样
-        self.dysample1 = DySample(64, 64, kernel_size=3, up_factor=4)
-        self.dysample2 = DySample(128, 128, kernel_size=3, up_factor=8)
-        self.dysample3 = DySample(1, 1, kernel_size=3, up_factor=16)
-        self.dysample_edge = DySample(1, 1, kernel_size=3, up_factor=4)
+        self.dysample1 = DySample(64, 64, kernel_size=1, up_factor=4)
+        self.dysample2 = DySample(128, 128, kernel_size=1, up_factor=8)
+        self.dysample3 = DySample(1, 1, kernel_size=1, up_factor=16)
+        self.dysample_edge = DySample(1, 1, kernel_size=1, up_factor=4)
 
     def forward(self, x):
         x1, x2, x3, x4 = self.resnet(x)

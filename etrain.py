@@ -73,7 +73,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler):
         gts = Variable(gts).cuda()
         edges = Variable(edges).cuda()
         # ---- forward ----
-        with autocast():
+        with autocast('cuda'):
             lateral_map_3, lateral_map_2, lateral_map_1, edge_map = model(images)
             # ---- loss function ----
             loss3 = structure_loss(lateral_map_3, gts)

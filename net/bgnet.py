@@ -188,9 +188,9 @@ class Net(nn.Module):
         self.cam3 = CAM(256, 256)
 
         # 使用 DUpsampling 模块进行上采样
-        self.dupsample1 = DUpsampling(64, 64, scale_factor=4)
-        self.dupsample2 = DUpsampling(128, 128, scale_factor=8)
-        self.dupsample3 = DUpsampling(256, 256, scale_factor=16)
+        self.dupsample1 = DUpsampling(1, 1, scale_factor=4)
+        self.dupsample2 = DUpsampling(1, 1, scale_factor=8)
+        self.dupsample3 = DUpsampling(1, 1, scale_factor=16)
         self.dupsample_edge = DUpsampling(1, 1, scale_factor=4)
 
         self.predictor1 = nn.Conv2d(64, 1, 1)

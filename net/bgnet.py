@@ -5,47 +5,43 @@ from net.ResNet import resnet50
 from math import log
 from net.Res2Net import res2net50_v1b_26w_4s
 
+class CoordAttention(nn.Module):
+    def __init__(self, in_channels, out_channels, reduction=32):
+        super(CoordAttention, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
 
-class DySample(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, up_factor=2):
-        super(DySample, self).__init__()
-        self.kernel_size = kernel_size
-        self.up_factor = up_factor
-        self.down = nn.Conv2d(in_channels, in_channels // 4, 1)
-        self.encoder = nn.Conv2d(in_channels // 4, self.up_factor ** 2 * self.kernel_size ** 2,
-                                 self.kernel_size, 1, self.kernel_size // 2)
-        self.out = nn.Conv2d(in_channels, out_channels, 1)
+        mip = max(8, in_channels // reduction)
 
-    def forward(self, in_tensor):
-        N, C, H, W = in_tensor.size()
+        self.conv1 = nn.Conv2d(in_channels, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = nn.ReLU()
 
-        # N,C,H,W -> N,C,delta*H,delta*W
-        # kernel prediction module
-        kernel_tensor = self.down(in_tensor)  # (N, Cm, H, W)
-        kernel_tensor = self.encoder(kernel_tensor)  # (N, S^2 * Kup^2, H, W)
-        kernel_tensor = F.pixel_shuffle(kernel_tensor, self.up_factor)  # (N, S^2 * Kup^2, H, W)->(N, Kup^2, S*H, S*W)
-        kernel_tensor = F.softmax(kernel_tensor, dim=1)  # (N, Kup^2, S*H, S*W)
-        kernel_tensor = kernel_tensor.unfold(2, self.up_factor, step=self.up_factor) # (N, Kup^2, H, W*S, S)
-        kernel_tensor = kernel_tensor.unfold(3, self.up_factor, step=self.up_factor) # (N, Kup^2, H, W, S, S)
-        kernel_tensor = kernel_tensor.reshape(N, self.kernel_size ** 2, H, W, self.up_factor ** 2) # (N, Kup^2, H, W, S^2)
-        kernel_tensor = kernel_tensor.permute(0, 2, 3, 1, 4)  # (N, H, W, Kup^2, S^2)
+        self.conv_h = nn.Conv2d(mip, out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, out_channels, kernel_size=1, stride=1, padding=0)
 
-        # content-aware reassembly module
-        # tensor.unfold: dim, size, step
-        in_tensor = F.pad(in_tensor, pad=(self.kernel_size // 2, self.kernel_size // 2,
-                                          self.kernel_size // 2, self.kernel_size // 2),
-                          mode='constant', value=0) # (N, C, H+Kup//2+Kup//2, W+Kup//2+Kup//2)
-        in_tensor = in_tensor.unfold(2, self.kernel_size, step=1) # (N, C, H, W+Kup//2+Kup//2, Kup)
-        in_tensor = in_tensor.unfold(3, self.kernel_size, step=1) # (N, C, H, W, Kup, Kup)
-        in_tensor = in_tensor.reshape(N, C, H, W, -1) # (N, C, H, W, Kup^2)
-        in_tensor = in_tensor.permute(0, 2, 3, 1, 4)  # (N, H, W, C, Kup^2)
+    def forward(self, x):
+        identity = x
 
-        out_tensor = torch.matmul(in_tensor, kernel_tensor)  # (N, H, W, C, S^2)
-        out_tensor = out_tensor.reshape(N, H, W, -1)
-        out_tensor = out_tensor.permute(0, 3, 1, 2)
-        out_tensor = F.pixel_shuffle(out_tensor, self.up_factor)
-        out_tensor = self.out(out_tensor)
-        return out_tensor
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_h * a_w
+
+        return out
+
 
 class ConvBNR(nn.Module):
     def __init__(self, inplanes, planes, kernel_size=3, stride=1, dilation=1, bias=False):
@@ -170,15 +166,14 @@ class Net(nn.Module):
         self.cam2 = CAM(256, 128)
         self.cam3 = CAM(256, 256)
 
+        self.coord_att1 = CoordAttention(64, 64)
+        self.coord_att2 = CoordAttention(128, 128)
+        self.coord_att3 = CoordAttention(256, 256)
+        self.coord_att4 = CoordAttention(256, 256)
+
         self.predictor1 = nn.Conv2d(64, 1, 1)
         self.predictor2 = nn.Conv2d(128, 1, 1)
         self.predictor3 = nn.Conv2d(256, 1, 1)
-
-        # 使用 DySample 模块进行上采样
-        self.dysample1 = DySample(64, 64, kernel_size=1, up_factor=4)
-        self.dysample2 = DySample(128, 128, kernel_size=1, up_factor=8)
-        self.dysample3 = DySample(1, 1, kernel_size=1, up_factor=16)
-        self.dysample_edge = DySample(1, 1, kernel_size=1, up_factor=4)
 
     def forward(self, x):
         x1, x2, x3, x4 = self.resnet(x)
@@ -196,16 +191,21 @@ class Net(nn.Module):
         x3r = self.reduce3(x3a)
         x4r = self.reduce4(x4a)
 
+        x1r = self.coord_att1(x1r)
+        x2r = self.coord_att2(x2r)
+        x3r = self.coord_att3(x3r)
+        x4r = self.coord_att4(x4r)
+
         x34 = self.cam3(x3r, x4r)
         x234 = self.cam2(x2r, x34)
         x1234 = self.cam1(x1r, x234)
 
-        o3 = self.predictor3(x34) # 16,1,26,26
-        o3 = self.dysample3(o3)
+        o3 = self.predictor3(x34)
+        o3 = F.interpolate(o3, scale_factor=16, mode='bilinear', align_corners=False)
         o2 = self.predictor2(x234)
-        o2 = self.dysample2(o2)
+        o2 = F.interpolate(o2, scale_factor=8, mode='bilinear', align_corners=False)
         o1 = self.predictor1(x1234)
-        o1 = self.dysample1(o1)
-        oe = self.dysample_edge(edge_att)
+        o1 = F.interpolate(o1, scale_factor=4, mode='bilinear', align_corners=False)
+        oe = F.interpolate(edge_att, scale_factor=4, mode='bilinear', align_corners=False)
 
         return o3, o2, o1, oe

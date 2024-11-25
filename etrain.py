@@ -8,6 +8,7 @@ from utils.tdataloader import get_loader
 from utils.utils import clip_gradient, AvgMeter, poly_lr
 import torch.nn.functional as F
 import numpy as np
+from torch.cuda.amp import GradScaler, autocast
 
 file = open("log/BGNet.txt", "a")
 torch.manual_seed(2021)
@@ -38,7 +39,7 @@ def dice_loss(predict, target):
     loss = 1 - num / den
     return loss.mean()
 
-def validate(val_loader, model):
+def validate(val_loader, model, scaler):
     model.eval()
     loss_record = AvgMeter()
     with torch.no_grad():
@@ -48,18 +49,19 @@ def validate(val_loader, model):
             gts = Variable(gts).cuda()
             edges = Variable(edges).cuda()
 
-            lateral_map_3, lateral_map_2, lateral_map_1, edge_map = model(images)
+            with autocast():
+                lateral_map_3, lateral_map_2, lateral_map_1, edge_map = model(images)
 
-            loss3 = structure_loss(lateral_map_3, gts)
-            loss2 = structure_loss(lateral_map_2, gts)
-            loss1 = structure_loss(lateral_map_1, gts)
-            losse = dice_loss(edge_map, edges)
-            loss = loss3 + loss2 + loss1 + 3 * losse
+                loss3 = structure_loss(lateral_map_3, gts)
+                loss2 = structure_loss(lateral_map_2, gts)
+                loss1 = structure_loss(lateral_map_1, gts)
+                losse = dice_loss(edge_map, edges)
+                loss = loss3 + loss2 + loss1 + 3 * losse
 
             loss_record.update(loss.data, opt.batchsize)
     return loss_record.avg
 
-def train(train_loader, val_loader, model, optimizer, epoch, best_loss):
+def train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler):
     model.train()
 
     loss_record3, loss_record2, loss_record1, loss_recorde = AvgMeter(), AvgMeter(), AvgMeter(), AvgMeter()
@@ -71,17 +73,19 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss):
         gts = Variable(gts).cuda()
         edges = Variable(edges).cuda()
         # ---- forward ----
-        lateral_map_3, lateral_map_2, lateral_map_1, edge_map = model(images)
-        # ---- loss function ----
-        loss3 = structure_loss(lateral_map_3, gts)
-        loss2 = structure_loss(lateral_map_2, gts)
-        loss1 = structure_loss(lateral_map_1, gts)
-        losse = dice_loss(edge_map, edges)
-        loss = loss3 + loss2 + loss1 + 3 * losse
+        with autocast():
+            lateral_map_3, lateral_map_2, lateral_map_1, edge_map = model(images)
+            # ---- loss function ----
+            loss3 = structure_loss(lateral_map_3, gts)
+            loss2 = structure_loss(lateral_map_2, gts)
+            loss1 = structure_loss(lateral_map_1, gts)
+            losse = dice_loss(edge_map, edges)
+            loss = loss3 + loss2 + loss1 + 3 * losse
         # ---- backward ----
-        loss.backward()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         clip_gradient(optimizer, opt.clip)
-        optimizer.step()
         # ---- recording loss ----
         loss_record3.update(loss3.data, opt.batchsize)
         loss_record2.update(loss2.data, opt.batchsize)
@@ -106,7 +110,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss):
         file.write('[Saving Snapshot:]' + save_path + 'BGNet-%d.pth' % epoch + '\n')
 
     # 验证模型并保存最优模型
-    val_loss = validate(val_loader, model)
+    val_loss = validate(val_loader, model, scaler)
     if val_loss < best_loss:
         best_loss = val_loss
         torch.save(model.state_dict(), save_path + 'BGNet-best.pth')
@@ -138,8 +142,14 @@ if __name__ == '__main__':
     # ---- build models ----
     model = Net().cuda()
 
+    # 使用 DataParallel 包装模型
+    model = torch.nn.DataParallel(model)
+
     params = model.parameters()
     optimizer = torch.optim.Adam(params, opt.lr)
+
+    # 创建 GradScaler 实例
+    scaler = GradScaler()
 
     image_root = '{}/Imgs/'.format(opt.train_path)
     gt_root = '{}/GT/'.format(opt.train_path)
@@ -154,6 +164,6 @@ if __name__ == '__main__':
     best_loss = float('inf')
     for epoch in range(opt.epoch):
         poly_lr(optimizer, opt.lr, epoch, opt.epoch)
-        best_loss = train(train_loader, val_loader, model, optimizer, epoch, best_loss)
+        best_loss = train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler)
 
     file.close()

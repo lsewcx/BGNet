@@ -200,11 +200,11 @@ class Net(nn.Module):
         x1234 = self.cam1(x1r, x234)
 
         o3 = self.predictor3(x34)
-        o3 = self.dupsample3(o3)
+        o3 = F.interpolate(o3, scale_factor=16, mode='bilinear', align_corners=False)
         o2 = self.predictor2(x234)
-        o2 = self.dupsample2(o2)
+        o2 = F.interpolate(o2, scale_factor=8, mode='bilinear', align_corners=False)
         o1 = self.predictor1(x1234)
-        o1 = self.dupsample1(o1)
-        oe = self.dupsample_edge(edge_att)
+        o1 = F.interpolate(o1, scale_factor=4, mode='bilinear', align_corners=False)
+        oe = F.interpolate(edge_att, scale_factor=4, mode='bilinear', align_corners=False)
 
         return o3, o2, o1, oe

@@ -8,7 +8,7 @@ from utils.tdataloader import get_loader
 from utils.utils import clip_gradient, AvgMeter, poly_lr
 import torch.nn.functional as F
 import numpy as np
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 
 file = open("log/BGNet.txt", "a")
 torch.manual_seed(2021)
@@ -158,6 +158,14 @@ if __name__ == '__main__':
     train_loader = get_loader(image_root, gt_root, edge_root, batchsize=opt.batchsize, trainsize=opt.trainsize)
     val_loader = get_loader(image_root, gt_root, edge_root, batchsize=opt.batchsize, trainsize=opt.trainsize)
     total_step = len(train_loader)
+
+    # 打印使用的 GPU 数量
+    num_gpus = torch.cuda.device_count()
+    print(f"Using {num_gpus} GPUs")
+
+    # 打印实际使用的 GPU 数量
+    if isinstance(model, torch.nn.DataParallel):
+        print(f"Model is using {len(model.device_ids)} GPUs")
 
     print("Start Training")
 

@@ -177,7 +177,7 @@ class Net(nn.Module):
         # 使用 CARAFE 模块进行上采样
         self.carafe1 = CARAFE(64, 64, kernel_size=3, up_factor=4)
         self.carafe2 = CARAFE(128, 128, kernel_size=3, up_factor=8)
-        self.carafe3 = CARAFE(256, 256, kernel_size=3, up_factor=16)
+        self.carafe3 = CARAFE(1, 256, kernel_size=3, up_factor=16)
         self.carafe_edge = CARAFE(1, 1, kernel_size=3, up_factor=4)
 
     def forward(self, x):

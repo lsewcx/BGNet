@@ -5,6 +5,47 @@ from net.ResNet import resnet50
 from math import log
 from net.Res2Net import res2net50_v1b_26w_4s
 
+class CARAFE(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, up_factor=2):
+        super(CARAFE, self).__init__()
+        self.kernel_size = kernel_size
+        self.up_factor = up_factor
+        self.down = nn.Conv2d(in_channels, in_channels // 4, 1)
+        self.encoder = nn.Conv2d(in_channels // 4, self.up_factor ** 2 * self.kernel_size ** 2,
+                                 self.kernel_size, 1, self.kernel_size // 2)
+        self.out = nn.Conv2d(in_channels, out_channels, 1)
+
+    def forward(self, in_tensor):
+        N, C, H, W = in_tensor.size()
+
+        # N,C,H,W -> N,C,delta*H,delta*W
+        # kernel prediction module
+        kernel_tensor = self.down(in_tensor)  # (N, Cm, H, W)
+        kernel_tensor = self.encoder(kernel_tensor)  # (N, S^2 * Kup^2, H, W)
+        kernel_tensor = F.pixel_shuffle(kernel_tensor, self.up_factor)  # (N, S^2 * Kup^2, H, W)->(N, Kup^2, S*H, S*W)
+        kernel_tensor = F.softmax(kernel_tensor, dim=1)  # (N, Kup^2, S*H, S*W)
+        kernel_tensor = kernel_tensor.unfold(2, self.up_factor, step=self.up_factor) # (N, Kup^2, H, W*S, S)
+        kernel_tensor = kernel_tensor.unfold(3, self.up_factor, step=self.up_factor) # (N, Kup^2, H, W, S, S)
+        kernel_tensor = kernel_tensor.reshape(N, self.kernel_size ** 2, H, W, self.up_factor ** 2) # (N, Kup^2, H, W, S^2)
+        kernel_tensor = kernel_tensor.permute(0, 2, 3, 1, 4)  # (N, H, W, Kup^2, S^2)
+
+        # content-aware reassembly module
+        # tensor.unfold: dim, size, step
+        in_tensor = F.pad(in_tensor, pad=(self.kernel_size // 2, self.kernel_size // 2,
+                                          self.kernel_size // 2, self.kernel_size // 2),
+                          mode='constant', value=0) # (N, C, H+Kup//2+Kup//2, W+Kup//2+Kup//2)
+        in_tensor = in_tensor.unfold(2, self.kernel_size, step=1) # (N, C, H, W+Kup//2+Kup//2, Kup)
+        in_tensor = in_tensor.unfold(3, self.kernel_size, step=1) # (N, C, H, W, Kup, Kup)
+        in_tensor = in_tensor.reshape(N, C, H, W, -1) # (N, C, H, W, Kup^2)
+        in_tensor = in_tensor.permute(0, 2, 3, 1, 4)  # (N, H, W, C, Kup^2)
+
+        out_tensor = torch.matmul(in_tensor, kernel_tensor)  # (N, H, W, C, S^2)
+        out_tensor = out_tensor.reshape(N, H, W, -1)
+        out_tensor = out_tensor.permute(0, 3, 1, 2)
+        out_tensor = F.pixel_shuffle(out_tensor, self.up_factor)
+        out_tensor = self.out(out_tensor)
+        return out_tensor
+
 
 class ConvBNR(nn.Module):
     def __init__(self, inplanes, planes, kernel_size=3, stride=1, dilation=1, bias=False):
@@ -133,9 +174,11 @@ class Net(nn.Module):
         self.predictor2 = nn.Conv2d(128, 1, 1)
         self.predictor3 = nn.Conv2d(256, 1, 1)
 
-    # def initialize_weights(self):
-    # model_state = torch.load('./models/resnet50-19c8e357.pth')
-    # self.resnet.load_state_dict(model_state, strict=False)
+        # 使用 CARAFE 模块进行上采样
+        self.carafe1 = CARAFE(64, 64, kernel_size=3, up_factor=4)
+        self.carafe2 = CARAFE(128, 128, kernel_size=3, up_factor=8)
+        self.carafe3 = CARAFE(256, 256, kernel_size=3, up_factor=16)
+        self.carafe_edge = CARAFE(1, 1, kernel_size=3, up_factor=4)
 
     def forward(self, x):
         x1, x2, x3, x4 = self.resnet(x)
@@ -158,11 +201,11 @@ class Net(nn.Module):
         x1234 = self.cam1(x1r, x234)
 
         o3 = self.predictor3(x34)
-        o3 = F.interpolate(o3, scale_factor=16, mode='bilinear', align_corners=False)
+        o3 = self.carafe3(o3)
         o2 = self.predictor2(x234)
-        o2 = F.interpolate(o2, scale_factor=8, mode='bilinear', align_corners=False)
+        o2 = self.carafe2(o2)
         o1 = self.predictor1(x1234)
-        o1 = F.interpolate(o1, scale_factor=4, mode='bilinear', align_corners=False)
-        oe = F.interpolate(edge_att, scale_factor=4, mode='bilinear', align_corners=False)
+        o1 = self.carafe1(o1)
+        oe = self.carafe_edge(edge_att)
 
         return o3, o2, o1, oe

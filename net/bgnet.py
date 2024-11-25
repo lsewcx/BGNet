@@ -143,29 +143,29 @@ class CAM(nn.Module):
         return x
 
 class DUpsampling(nn.Module):
-    def __init__(self, in_channels, out_channels, scale_factor=2):
+    def __init__(self, inplanes, scale, num_class=21, pad=0):
         super(DUpsampling, self).__init__()
-        self.scale_factor = scale_factor
-        self.conv_offset = nn.Conv2d(in_channels, 2 * scale_factor * scale_factor, kernel_size=3, padding=1)
-        self.conv_mask = nn.Conv2d(in_channels, scale_factor * scale_factor, kernel_size=3, padding=1)
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-
+        self.conv1 = nn.Conv2d(inplanes, num_class * scale * scale, kernel_size=1, padding = pad,bias=False)
+        self.scale = scale
+    
     def forward(self, x):
-        offset = self.conv_offset(x)
-        mask = torch.sigmoid(self.conv_mask(x))
+        x = self.conv1(x)
         N, C, H, W = x.size()
-        x = F.unfold(x, kernel_size=3, padding=1)
-        x = x.view(N, C, 3, 3, H, W)
-        offset = offset.view(N, 2, self.scale_factor, self.scale_factor, H, W)
-        mask = mask.view(N, 1, self.scale_factor, self.scale_factor, H, W)
-        x = x.permute(0, 4, 5, 1, 2, 3).contiguous()  # 调整维度顺序
-        x = x.view(N * H * W, C, 3, 3)
-        mask = mask.permute(0, 4, 5, 1, 2, 3).contiguous()  # 调整维度顺序
-        mask = mask.view(N * H * W, 1, self.scale_factor, self.scale_factor)
-        x = x * mask
-        x = x.view(N, C * 3 * 3, H, W)
-        x = F.fold(x, output_size=(H * self.scale_factor, W * self.scale_factor), kernel_size=3, padding=1)
-        x = self.conv(x)
+
+        # N, H, W, C
+        x_permuted = x.permute(0, 2, 3, 1) 
+
+        # N, H, W*scale, C/scale
+        x_permuted = x_permuted.contiguous().view((N, H, W * self.scale, int(C / (self.scale))))
+
+        # N, W*scale,H, C/scale
+        x_permuted = x_permuted.permute(0, 2, 1, 3)
+        # N, W*scale,H*scale, C/(scale**2)
+        x_permuted = x_permuted.contiguous().view((N, W * self.scale, H * self.scale, int(C / (self.scale * self.scale))))
+
+        # N,C/(scale**2),W*scale,H*scale
+        x = x_permuted.permute(0, 3, 2, 1)
+        
         return x
 
 class Net(nn.Module):
@@ -192,10 +192,10 @@ class Net(nn.Module):
         self.cam3 = CAM(256, 256)
 
         # 使用 DUpsampling 模块进行上采样
-        self.dupsample1 = DUpsampling(1, 1, scale_factor=4)
-        self.dupsample2 = DUpsampling(1, 1, scale_factor=8)
-        self.dupsample3 = DUpsampling(1, 1, scale_factor=16)
-        self.dupsample_edge = DUpsampling(1, 1, scale_factor=4)
+        self.dupsample1 = DUpsampling(1, 4, num_class=1)
+        self.dupsample2 = DUpsampling(1, 8, num_class=1)
+        self.dupsample3 = DUpsampling(1, 16, num_class=1)
+        self.dupsample_edge = DUpsampling(1, 4, num_class=1)
 
         self.predictor1 = nn.Conv2d(64, 1, 1)
         self.predictor2 = nn.Conv2d(128, 1, 1)

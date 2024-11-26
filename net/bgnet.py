@@ -1,9 +1,8 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from math import log
 from net.ResNet import resnet50
+from math import log
 from net.Res2Net import res2net50_v1b_26w_4s
 
 

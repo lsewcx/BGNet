@@ -1,11 +1,10 @@
-from net.bgnet import Net
-from torchinfo import summary
+import torch
+from net.mynet import OFM
 
-# 初始化模型
-model = Net()
-
-# 打印模型参数量
-summary(model, input_size=(1, 3, 416, 416))
+if __name__ == "__main__":
+    x = torch.randn(1, 3, 416, 416)
+    output = OFM(3, 64)(x)
+    print(output.shape)
 
 
 '''

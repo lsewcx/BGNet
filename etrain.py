@@ -105,7 +105,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler):
     save_path = 'checkpoints/{}/'.format(opt.train_save)
     os.makedirs(save_path, exist_ok=True)
     if (epoch + 1) % 5 == 0 or (epoch + 1) == opt.epoch:
-        torch.save(model.state_dict(), save_path + 'BGNet-%d.pth' % epoch)
+        torch.save(model, save_path + 'BGNet-%d.pth' % epoch)
         print('[Saving Snapshot:]', save_path + 'BGNet-%d.pth' % epoch)
         file.write('[Saving Snapshot:]' + save_path + 'BGNet-%d.pth' % epoch + '\n')
 

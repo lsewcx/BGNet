@@ -192,8 +192,9 @@ def res2net50_v1b_26w_4s(pretrained=False, **kwargs):
     """
     model = Res2Net(Bottle2neck, [3, 4, 6, 3], baseWidth=26, scale=4, **kwargs)
     if pretrained:
-        model_state = model_zoo.load_url(model_urls['res2net50_v1b_26w_4s'])
+        model_state = torch.load('./models/res2net50_v1b_26w_4s-3cf99910.pth')
         model.load_state_dict(model_state)
+        # lib.load_state_dict(model_zoo.load_url(model_urls['res2net50_v1b_26w_4s']))
     return model
 
 

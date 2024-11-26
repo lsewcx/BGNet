@@ -113,7 +113,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler):
     val_loss = validate(val_loader, model, scaler)
     if val_loss < best_loss:
         best_loss = val_loss
-        torch.save(model.state_dict(), save_path + 'BGNet-best.pth')
+        torch.save(model, save_path + 'BGNet-best.pth')
         print('[Saving Best Model:]', save_path + 'BGNet-best.pth')
         file.write('[Saving Best Model:]' + save_path + 'BGNet-best.pth' + '\n')
 

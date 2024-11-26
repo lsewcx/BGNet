@@ -17,7 +17,8 @@ for _data_name in ['COD10K']:
     save_path = './results/BGNet/{}/'.format(_data_name)
     opt = parser.parse_args()
     model = Net()
-    model.load_state_dict(torch.load(opt.pth_path))
+    # model.load_state_dict(torch.load(opt.pth_path))
+    model = torch.load(opt.pth_path)
     model.cuda()
     model.eval()
 

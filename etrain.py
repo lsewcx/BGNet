@@ -105,7 +105,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler):
     save_path = 'checkpoints/{}/'.format(opt.train_save)
     os.makedirs(save_path, exist_ok=True)
     if (epoch + 1) % 5 == 0 or (epoch + 1) == opt.epoch:
-        torch.save(model, save_path + 'BGNet-%d.pth' % epoch)
+        torch.save(model.state_dict(), save_path + 'BGNet-%d.pth' % epoch)
         print('[Saving Snapshot:]', save_path + 'BGNet-%d.pth' % epoch)
         file.write('[Saving Snapshot:]' + save_path + 'BGNet-%d.pth' % epoch + '\n')
 
@@ -113,7 +113,7 @@ def train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler):
     val_loss = validate(val_loader, model, scaler)
     if val_loss < best_loss:
         best_loss = val_loss
-        torch.save(model, save_path + 'BGNet-best.pth')
+        torch.save(model.state_dict(), save_path + 'BGNet-best.pth')
         print('[Saving Best Model:]', save_path + 'BGNet-best.pth')
         file.write('[Saving Best Model:]' + save_path + 'BGNet-best.pth' + '\n')
 
@@ -157,11 +157,10 @@ if __name__ == '__main__':
     if opt.resume:
         if os.path.isfile(opt.resume):
             print(f"Loading checkpoint '{opt.resume}'")
-            checkpoint = torch.load(opt.resume)
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            start_epoch = checkpoint['epoch'] + 1
-            best_loss = checkpoint['best_loss']
+            checkpoint = torch.load(opt.resume, weights_only=True)
+            model.load_state_dict(checkpoint)
+            start_epoch = int(opt.resume.split('-')[-1].split('.')[0]) + 1
+            best_loss = float('inf')  # 如果没有保存最佳损失，可以设置为无穷大
         else:
             print(f"No checkpoint found at '{opt.resume}'")
             start_epoch = 0

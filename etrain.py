@@ -153,6 +153,9 @@ if __name__ == '__main__':
     # 创建 GradScaler 实例
     scaler = GradScaler()
 
+    # 添加 DataParallel 到安全全局列表
+    torch.serialization.add_safe_globals([torch.nn.parallel.DataParallel])
+
     # 加载之前保存的模型权重
     if opt.resume:
         if os.path.isfile(opt.resume):

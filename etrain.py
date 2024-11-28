@@ -3,12 +3,13 @@ import torch
 from torch.autograd import Variable
 import os
 from datetime import datetime
-from net.bgnet import Net
+# from net.bgnet import Net
 from utils.tdataloader import get_loader
 from utils.utils import clip_gradient, AvgMeter, poly_lr
 import torch.nn.functional as F
 import numpy as np
 from torch.amp import GradScaler, autocast
+from net.mynet import Net
 
 file = open("log/BGNet.txt", "a")
 torch.manual_seed(2021)
@@ -137,8 +138,6 @@ if __name__ == '__main__':
                         default='/kaggle/input/cod10k-val/ValDataset', help='path to validation dataset')
     parser.add_argument('--train_save', type=str,
                         default='BGNet')
-    parser.add_argument('--resume', type=str,
-                        default='checkpoints/BGNet/BGNet-best.pth', help='path to latest checkpoint')
     opt = parser.parse_args()
 
     # ---- build models ----
@@ -152,25 +151,6 @@ if __name__ == '__main__':
 
     # 创建 GradScaler 实例
     scaler = GradScaler()
-
-    # 添加 DataParallel 到安全全局列表
-    torch.serialization.add_safe_globals([torch.nn.parallel.DataParallel])
-
-    # 加载之前保存的模型权重
-    if opt.resume:
-        if os.path.isfile(opt.resume):
-            print(f"Loading checkpoint '{opt.resume}'")
-            checkpoint = torch.load(opt.resume, weights_only=True)
-            model.load_state_dict(checkpoint)
-            start_epoch = int(opt.resume.split('-')[-1].split('.')[0]) + 1
-            best_loss = float('inf')  # 如果没有保存最佳损失，可以设置为无穷大
-        else:
-            print(f"No checkpoint found at '{opt.resume}'")
-            start_epoch = 0
-            best_loss = float('inf')
-    else:
-        start_epoch = 0
-        best_loss = float('inf')
 
     image_root = '{}/Imgs/'.format(opt.train_path)
     gt_root = '{}/GT/'.format(opt.train_path)
@@ -190,7 +170,8 @@ if __name__ == '__main__':
 
     print("Start Training")
 
-    for epoch in range(start_epoch, opt.epoch):
+    best_loss = float('inf')
+    for epoch in range(opt.epoch):
         poly_lr(optimizer, opt.lr, epoch, opt.epoch)
         best_loss = train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler)
 

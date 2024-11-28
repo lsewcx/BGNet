@@ -137,6 +137,8 @@ if __name__ == '__main__':
                         default='/kaggle/input/cod10k-val/ValDataset', help='path to validation dataset')
     parser.add_argument('--train_save', type=str,
                         default='BGNet')
+    parser.add_argument('--resume', type=str,
+                        default='checkpoints/BGNet/BGNet-best.pth', help='path to latest checkpoint')
     opt = parser.parse_args()
 
     # ---- build models ----
@@ -150,6 +152,23 @@ if __name__ == '__main__':
 
     # 创建 GradScaler 实例
     scaler = GradScaler()
+
+    # 加载之前保存的模型权重
+    if opt.resume:
+        if os.path.isfile(opt.resume):
+            print(f"Loading checkpoint '{opt.resume}'")
+            checkpoint = torch.load(opt.resume)
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            start_epoch = checkpoint['epoch'] + 1
+            best_loss = checkpoint['best_loss']
+        else:
+            print(f"No checkpoint found at '{opt.resume}'")
+            start_epoch = 0
+            best_loss = float('inf')
+    else:
+        start_epoch = 0
+        best_loss = float('inf')
 
     image_root = '{}/Imgs/'.format(opt.train_path)
     gt_root = '{}/GT/'.format(opt.train_path)
@@ -169,8 +188,7 @@ if __name__ == '__main__':
 
     print("Start Training")
 
-    best_loss = float('inf')
-    for epoch in range(opt.epoch):
+    for epoch in range(start_epoch, opt.epoch):
         poly_lr(optimizer, opt.lr, epoch, opt.epoch)
         best_loss = train(train_loader, val_loader, model, optimizer, epoch, best_loss, scaler)
 

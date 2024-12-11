@@ -5,6 +5,7 @@ from net.ResNet import resnet50
 from math import log
 from net.Res2Net import res2net50_v1b_26w_4s
 import cv2
+import numpy as np
 
 class ShadowEnhancement(nn.Module):
     def __init__(self):
@@ -36,6 +37,7 @@ class ObjectFocusModule(nn.Module):
         for i in range(x_uint8.size(0)):
             fg_mask = self.mog2.apply(x_uint8[i].permute(1, 2, 0).cpu().numpy())
             mog2_mask.append(fg_mask)
+        mog2_mask = np.array(mog2_mask)  # 将列表转换为单一的 numpy.ndarray
         mog2_mask = torch.tensor(mog2_mask, dtype=torch.float32).unsqueeze(1).to(x.device) / 255.0
 
         # 光影增强
